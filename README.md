@@ -7,7 +7,7 @@
 ![Clock](https://img.shields.io/badge/Target%20Clock-100%20MHz%20(10ns)-orange)
 ![Complexity](https://img.shields.io/badge/Cells-10%2C476%20Standard%20Cells-brightgreen)
 
-A tape-out-ready 32-bit Microcontroller System-on-Chip (SoC) featuring a hazard-resolved pipelined CPU core, on-chip memory, and memory-mapped peripheral subsystems (UART, I2C, Timers, GPIO). The entire SoC is hardened through the open-source **OpenLane / OpenROAD ASIC flow** down to GDSII using the **SkyWater 130nm CMOS PDK (`sky130A`)**.
+A tape-out-ready 32-bit Microcontroller System-on-Chip (SoC) combining a pipelined CPU core with an on-chip memory-mapped peripheral subsystem (UART, I2C, Timers, GPIO), hardened through the open-source **OpenLane / OpenROAD ASIC flow** down to GDSII on the **SkyWater 130nm CMOS process (`sky130A`)**.
 
 ---
 
@@ -19,34 +19,62 @@ A tape-out-ready 32-bit Microcontroller System-on-Chip (SoC) featuring a hazard-
 
 ---
 
-## 🏛️ Top-Level SoC Architecture & Block Diagram
+## 🗺️ SoC Memory Map & Interconnect
+
+The processor interfaces with on-chip RAM and peripheral hardware controllers through a unified 32-bit memory-mapped address space decoded by `addr_decoder.v`:
+
+```
+0xFFFF_FFFF ┌─────────────────────────────────────────┐
+            │          I2C Master Controller          │ 0x0000_0060 - 0x0000_006F
+            ├─────────────────────────────────────────┤
+            │         UART Transceiver (TX/RX)        │ 0x0000_0040 - 0x0000_004F
+            ├─────────────────────────────────────────┤
+            │       32-bit Timer with Prescaler       │ 0x0000_0020 - 0x0000_002F
+            ├─────────────────────────────────────────┤
+            │        32-Channel GPIO Subsystem        │ 0x0000_0010 - 0x0000_001F
+            ├─────────────────────────────────────────┤
+            │        On-Chip Data RAM (16 KB)         │ 0x0000_0000 - 0x0000_3FFF
+0x0000_0000 └─────────────────────────────────────────┘
+```
+
+| Address Range | Subsystem / Peripheral | Description | Control Signals |
+| :--- | :--- | :--- | :--- |
+| `0x0000_0000 – 0x0000_3FFF` | **Data RAM (16 KB)** | Synchronous internal scratchpad memory | `dm = 1` |
+| `0x0000_0010 – 0x0000_001F` | **GPIO Subsystem** | 32-bit bidirectional I/O, direction masks, input/output registers | `ga, gina, gena, drina` |
+| `0x0000_0020 – 0x0000_002F` | **Prescaled Timer** | 32-bit down-counter, prescaler divider, overflow interrupts | `tc, tp, t_cnf` |
+| `0x0000_0040 – 0x0000_004F` | **UART Transceiver** | Full-duplex TX/RX buffers, programmable baud-rate division | `ut, ur, ue` |
+| `0x0000_0060 – 0x0000_006F` | **I2C Master** | Standard two-wire serial master address/data controllers | `i2c_addr, i2c_data` |
+
+---
+
+## 🏗️ Top-Level SoC Block Diagram
 
 ![SoC Architecture Block Diagram](screenshots/block_diagram.png)
 
 ```mermaid
 graph TD
-    subgraph Core ["32-bit Pipelined CPU Core"]
-        PC["Program Counter"] --> IF_ID["IF/ID"]
-        IF_ID --> ID_EX["ID/EX"]
-        ID_EX --> EX_MEM["EX/MEM"]
-        EX_MEM --> MEM_WB["MEM/WB"]
-        BHT["2-Bit BHT / Dynamic Branch"] -.-> PC
-        FWD["Forwarding & Hazard Stall Unit"] --> ID_EX
+    subgraph Core ["32-bit Processor Core"]
+        CPU["Pipelined CPU Datapath"]
+        CTRL["Hazard & Stall Control"]
+        BHT["2-Bit Branch History Table"]
     end
 
-    subgraph Bus ["Memory Interconnect & Address Decoder"]
-        DEC["Address Decoder (addr_decoder.v)"]
+    subgraph Interconnect ["Address Decoder & Bus Crossbar"]
+        DEC["Memory Address Decoder (addr_decoder.v)"]
     end
 
-    subgraph Subsystems ["Memory-Mapped Peripherals & Storage"]
+    subgraph Peripherals ["Memory-Mapped Peripheral Subsystems"]
         RAM["16 KB Data Memory (data_mem.v)"]
         GPIO["32-Line Bi-Directional GPIO (gpio_controller.v)"]
         TIMER["32-bit Prescaled Timer (prescale_timer.v)"]
-        UART["UART Transceiver TX/RX (uart_tx.v / uart_rx.v)"]
-        I2C["I2C Serial Master (I2C_addr.v / I2C_data.v)"]
+        UART["Full-Duplex UART Transceiver (uart_tx.v / uart_rx.v)"]
+        I2C["I2C Serial Master Controller (I2C_addr.v / I2C_data.v)"]
     end
 
-    Core <--> DEC
+    CPU <--> DEC
+    CTRL <--> DEC
+    BHT <--> CPU
+    
     DEC <--> RAM
     DEC <--> GPIO
     DEC <--> TIMER
@@ -56,32 +84,27 @@ graph TD
 
 ---
 
-## 🗺️ Unified Memory Map
+## 📦 Integrated Peripheral Subsystems
 
-The CPU datapath communicates with peripherals via dedicated memory-mapped address ranges decoded by `addr_decoder.v`:
-
-| Address Range | Subsystem / Peripheral | Description | Control Signals |
-| :--- | :--- | :--- | :--- |
-| `0x0000_0000 – 0x0000_3FFF` | **Data RAM (16 KB)** | Synchronous internal scratchpad RAM | `dm = 1` |
-| `0x0000_0010 – 0x0000_001F` | **GPIO Subsystem** | 32-bit bidirectional I/O, direction masks, input/output registers | `ga, gina, gena, drina` |
-| `0x0000_0020 – 0x0000_002F` | **Prescaled Timer** | 32-bit down-counter, prescaler divider, overflow interrupts | `tc, tp, t_cnf` |
-| `0x0000_0040 – 0x0000_004F` | **UART Transceiver** | Full-duplex TX/RX FIFO buffers, baud-rate generator | `ut, ur, ue` |
-| `0x0000_0060 – 0x0000_006F` | **I2C Master** | 2-wire serial master address/data controllers | `i2c_addr, i2c_data` |
+1. **GPIO Controller**: 32 software-configurable bidirectional I/O lines with direction masks (`tri_sig`), input registers (`pin`), and output registers (`pon`).
+2. **UART Transceiver**: Asynchronous serial transmitter/receiver supporting programmable baud-rate division, framing, and TX/RX buffer status registers.
+3. **Timer/Counter Subsystem**: 32-bit down-counter with programmable clock prescaler divider and periodic interrupt overflow generation.
+4. **I2C Master Core**: Standard two-wire serial interface providing start/stop condition generation, byte acknowledge detection, and slave peripheral addressing.
 
 ---
 
-## 📊 Physical Design & Synthesis Metrics
+## ⚙️ Hardware & Physical Design Specifications
 
-The design was hardened using the OpenLane ASIC flow targeting the `sky130_fd_sc_hd` standard cell library.
-
-| Metric | Measured Value | Source Report |
+| Parameter | Value / Specification | Source |
 | :--- | :--- | :--- |
-| **PDK Process Node** | SkyWater 130nm CMOS (`sky130A`) | `config.json` |
+| **Architecture** | 32-bit Pipelined Datapath with Dynamic Branch Prediction | RTL |
+| **Target PDK** | SkyWater 130nm Standard Cells (`sky130_fd_sc_hd`) | `config.json` |
 | **Standard Cell Count** | **10,476 cells** | `reports/synthesis/1-synthesis.AREA_0.stat.rpt` |
-| **Internal Nets / Wires** | **10,447 nets** (10,478 bits) | `reports/synthesis/1-synthesis.AREA_0.stat.rpt` |
+| **Total Routing Nets** | **10,447 wires** (10,478 bits) | `reports/synthesis/1-synthesis.AREA_0.stat.rpt` |
 | **Target Clock Period** | **10.0 ns (100 MHz)** | `constraints/clock.sdc` |
-| **Clock Tree Synthesis (CTS)**| Completed with balanced skew buffers | `reports/cts/` |
-| **Post-Route Timing (STA)** | Validated across setup / hold corners | `reports/synthesis/2-syn_sta.summary.rpt` |
+| **Data Memory** | 16 KB On-Chip Synchronous RAM | `rtl/data_mem.v` |
+| **GPIO Count** | 32 Bi-directional Pins with Tri-state control | `rtl/gpio_controller.v` |
+| **Physical Flow** | Automated OpenLane / OpenROAD Flow | `config.json` |
 
 ---
 
@@ -118,17 +141,17 @@ M32_MCU_V1/
 
 ---
 
-## 🛠️ Verification & Implementation Flow
+## 🛠️ Verification & ASIC Synthesis Flow
 
 ### 1. Functional Simulation (Icarus Verilog):
 ```bash
-# Compile top-level SoC with testbench
+# Compile SoC core and peripheral testbench
 iverilog -o sim/mcu_sim.vvp rtl/*.v tb/tb_top.v
 
 # Execute simulation
 vvp sim/mcu_sim.vvp
 
-# Inspect pipeline and peripheral waveforms
+# Open waveforms in GTKWave
 gtkwave sim/waveform.vcd
 ```
 
@@ -138,7 +161,7 @@ cd synth_yosys
 yosys synth.ys
 ```
 
-### 3. OpenLane ASIC Flow (RTL-to-GDSII):
+### 3. OpenLane ASIC Implementation (RTL-to-GDSII):
 ```bash
 # Run automated OpenLane flow targeting SkyWater 130nm
 openlane config.json
