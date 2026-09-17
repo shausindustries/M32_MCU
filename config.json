@@ -1,0 +1,10 @@
+{
+  "DESIGN_NAME": "top",
+  "VERILOG_FILES": "dir::rtl/*.v",
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 10,
+  "SDC_FILE": "constraints/clock.sdc",
+  "PDK": "sky130A",
+  "DIE_AREA": "0 0 500 500"
+}
+
