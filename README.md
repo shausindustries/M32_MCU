@@ -23,20 +23,6 @@ A tape-out-ready 32-bit Microcontroller System-on-Chip (SoC) combining a pipelin
 
 The processor interfaces with on-chip RAM and peripheral hardware controllers through a unified 32-bit memory-mapped address space decoded by `addr_decoder.v`:
 
-```
-0xFFFF_FFFF ┌─────────────────────────────────────────┐
-            │          I2C Master Controller          │ 0x0000_0060 - 0x0000_006F
-            ├─────────────────────────────────────────┤
-            │         UART Transceiver (TX/RX)        │ 0x0000_0040 - 0x0000_004F
-            ├─────────────────────────────────────────┤
-            │       32-bit Timer with Prescaler       │ 0x0000_0020 - 0x0000_002F
-            ├─────────────────────────────────────────┤
-            │        32-Channel GPIO Subsystem        │ 0x0000_0010 - 0x0000_001F
-            ├─────────────────────────────────────────┤
-            │        On-Chip Data RAM (16 KB)         │ 0x0000_0000 - 0x0000_3FFF
-0x0000_0000 └─────────────────────────────────────────┘
-```
-
 | Address Range | Subsystem / Peripheral | Description | Control Signals |
 | :--- | :--- | :--- | :--- |
 | `0x0000_0000 – 0x0000_3FFF` | **Data RAM (16 KB)** | Synchronous internal scratchpad memory | `dm = 1` |
@@ -49,7 +35,7 @@ The processor interfaces with on-chip RAM and peripheral hardware controllers th
 
 ## 🏗️ Top-Level SoC Block Diagram
 
-![SoC Architecture Block Diagram](screenshots/block_diagram.png)
+![SoC Architecture Block Diagram]
 
 ```mermaid
 graph TD
